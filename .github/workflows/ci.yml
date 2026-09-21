@@ -18,6 +18,7 @@ jobs:
           enable-cache: true
           python-version: ${{ matrix.python }}
       - run: uv sync --locked --all-groups
+      - run: sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg
       - name: ruff lint
         run: uv run ruff check .
       - name: ruff format

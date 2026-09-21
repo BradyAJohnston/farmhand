@@ -26,12 +26,11 @@ def combine_frames(
     Frames are listed for ffmpeg's concat demuxer, so numbering gaps are fine and
     nothing is written next to the frames.
     """
-    if shutil.which("ffmpeg") is None:
-        raise RuntimeError("ffmpeg not found on PATH")
-
     frames = find_frames(directory)
     if not frames:
         raise FileNotFoundError(f"No frame_* image files found in {directory}")
+    if shutil.which("ffmpeg") is None:
+        raise RuntimeError("ffmpeg not found on PATH")
 
     output = Path(output)
     output.parent.mkdir(parents=True, exist_ok=True)
