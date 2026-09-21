@@ -5,12 +5,12 @@ description = "farmhand test: 6n2y spinning on the spot with the Squishy materia
 requires-python = "~=3.13.0"
 dependencies = [
     "bpy==5.2.*",
-    "farmhand",
+    "farmhand-bpy",
     "molecularnodes>=520.2.0",
 ]
 
 [tool.uv.sources]
-farmhand = { path = "../..", editable = true }
+farmhand-bpy = { path = "../..", editable = true }
 
 [tool.farmhand]
 # environment = "my-modal-env"   # omit to use your Modal profile's default

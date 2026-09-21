@@ -11,8 +11,10 @@ Distributed Blender rendering on [Modal](https://modal.com). farmhand uploads a 
 ## Install
 
 ```sh
-uv tool install farmhand    # or: pip install farmhand
+uv tool install farmhand-bpy    # or: pip install farmhand-bpy
 ```
+
+The distribution is `farmhand-bpy`; the command and the import name are `farmhand`.
 
 ## Quickstart
 

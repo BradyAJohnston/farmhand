@@ -1,5 +1,5 @@
 [project]
-name = "farmhand"
+name = "farmhand-bpy"
 version = "0.1.0"
 description = "Distributed Blender rendering on Modal"
 readme = "README.md"
@@ -41,6 +41,7 @@ build-backend = "uv_build"
 
 [tool.uv.build-backend]
 module-root = ""
+module-name = "farmhand"
 
 [dependency-groups]
 dev = [
