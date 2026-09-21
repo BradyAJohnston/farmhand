@@ -1,0 +1,14 @@
+# farmhand config. Place as farmhand.yml in your project (or any parent directory).
+# CLI flags override this file; this file overrides [tool.farmhand] in pyproject.toml.
+environment: my-modal-env   # omit to use your Modal profile's default environment
+app_name: farmhand
+volume: farmhand-data
+gpu: L40S
+max_containers: 50
+timeout: 7200
+bpy_version: 5.1.0
+output_dir: render
+frames_per_container: 1
+fps: 30
+codec: libx265
+crf: 20

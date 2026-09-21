@@ -1,0 +1,27 @@
+[project]
+name = "farmhand"
+version = "0.1.0"
+description = "Distributed Blender rendering on Modal"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "click>=8.0",
+    "modal>=1.3.5",
+    "pyyaml>=6.0",
+    "rich>=13.0",
+]
+
+[project.scripts]
+farmhand = "farmhand.cli:main"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["farmhand*"]
+
+[tool.farmhand]
+# Example config: any of these can also live in a farmhand.yml, or be passed as CLI flags.
+# environment = "my-modal-env"
+# gpu = "L40S"
