@@ -1,0 +1,28 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python: ["3.11", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+          python-version: ${{ matrix.python }}
+      - run: uv sync --locked --all-groups
+      - name: ruff lint
+        run: uv run ruff check .
+      - name: ruff format
+        run: uv run ruff format --check .
+      - name: ty
+        run: uv run ty check farmhand
+      - name: pytest
+        run: uv run pytest

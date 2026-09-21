@@ -1,0 +1,8 @@
+data/
+render/
+preview/
+*.blend
+*.blend1
+*.MNSession
+*.mp4
+.venv/

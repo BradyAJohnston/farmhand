@@ -3,7 +3,23 @@ name = "farmhand"
 version = "0.1.0"
 description = "Distributed Blender rendering on Modal"
 readme = "README.md"
-requires-python = ">=3.13"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "Brady Johnston", email = "brady.johnston@me.com" }]
+requires-python = ">=3.11"
+keywords = ["blender", "rendering", "modal", "render-farm", "cycles", "gpu"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Console",
+    "Intended Audience :: End Users/Desktop",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Multimedia :: Graphics :: 3D Rendering",
+]
 dependencies = [
     "click>=8.0",
     "modal>=1.3.5",
@@ -11,17 +27,42 @@ dependencies = [
     "rich>=13.0",
 ]
 
+[project.urls]
+Homepage = "https://github.com/BradyAJohnston/farmhand"
+Repository = "https://github.com/BradyAJohnston/farmhand"
+Issues = "https://github.com/BradyAJohnston/farmhand/issues"
+
 [project.scripts]
-farmhand = "farmhand.cli:main"
+farmhand = "farmhand.cli:entry"
 
 [build-system]
-requires = ["setuptools>=68"]
-build-backend = "setuptools.build_meta"
+requires = ["uv_build>=0.9,<0.10"]
+build-backend = "uv_build"
 
-[tool.setuptools.packages.find]
-include = ["farmhand*"]
+[tool.uv.build-backend]
+module-root = ""
 
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+    "ruff>=0.16.8",
+    "ty>=0.0.82",
+]
+
+[tool.ruff]
+line-length = 120
+target-version = "py311"
+extend-exclude = ["examples/*/data", "examples/*/preview"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+
+[tool.ty.environment]
+python-version = "3.11"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+# farmhand's own settings when run from this repo. Any key from farmhand.example.yml
+# can go here, in a farmhand.yml, or on the command line.
 [tool.farmhand]
-# Example config: any of these can also live in a farmhand.yml, or be passed as CLI flags.
-# environment = "my-modal-env"
-# gpu = "L40S"

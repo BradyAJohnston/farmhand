@@ -1,0 +1,20 @@
+[project]
+name = "sixn2y-spin"
+version = "0.1.0"
+description = "farmhand test: 6n2y spinning on the spot with the Squishy material"
+requires-python = "~=3.13.0"
+dependencies = [
+    "bpy==5.2.*",
+    "farmhand",
+    "molecularnodes>=520.2.0",
+]
+
+[tool.uv.sources]
+farmhand = { path = "../..", editable = true }
+
+[tool.farmhand]
+# environment = "my-modal-env"   # omit to use your Modal profile's default
+bpy_version = "5.2.2"            # must match the bpy that saved the .blend
+frames_per_container = 4
+fps = 30
+crf = 18

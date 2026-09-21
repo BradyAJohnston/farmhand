@@ -10,10 +10,16 @@ cfg = config.active()
 
 app = modal.App(cfg.app_name)
 
+# The containers get the deploy-time config through an env var and this package
+# as source, so they never need a config file, rich, pyyaml or a farmhand install.
+container_env = config.to_container_env(cfg)
+
 rendering_image = (
     modal.Image.debian_slim(python_version="3.13")
     .apt_install("xorg", "libxkbcommon0")
     .uv_pip_install(f"bpy=={cfg.bpy_version}")
+    .env(container_env)
+    .add_local_python_source("farmhand")
 )
 
 vol = modal.Volume.from_name(cfg.volume, create_if_missing=True)
@@ -22,12 +28,17 @@ vol = modal.Volume.from_name(cfg.volume, create_if_missing=True)
 VOLUME_MOUNT = "/data"
 
 
+def _job_dir(job_id: str) -> Path:
+    """The job's directory on the volume. Validates the ID so it cannot escape the mount."""
+    return Path(VOLUME_MOUNT) / config.check_job_id(job_id)
+
+
 @app.function(image=rendering_image, volumes={VOLUME_MOUNT: vol})
 def upload_blend(blend_file: bytes, job_id: str) -> dict:
     """Uploads blend file to shared volume and returns frame info."""
-    import bpy
+    import bpy  # ty: ignore[unresolved-import]
 
-    blend_path = f"{VOLUME_MOUNT}/{job_id}/input.blend"
+    blend_path = str(_job_dir(job_id) / "input.blend")
     Path(blend_path).parent.mkdir(parents=True, exist_ok=True)
     Path(blend_path).write_bytes(blend_file)
     vol.commit()
@@ -49,32 +60,35 @@ def upload_blend(blend_file: bytes, job_id: str) -> dict:
     max_containers=cfg.max_containers,
     image=rendering_image,
     timeout=cfg.timeout,
+    retries=modal.Retries(max_retries=2, initial_delay=5.0, backoff_coefficient=1.0),
     volumes={VOLUME_MOUNT: vol},
 )
 def render(
     job_id: str,
-    frame_start: int = 0,
-    frame_end: int = 0,
+    frame_start: int,
+    frame_end: int,
     frame_step: int = 1,
     resolution_x: int | None = None,
     resolution_y: int | None = None,
     resolution_percentage: int | None = None,
     samples: int | None = None,
     engine: str | None = None,
-) -> list[tuple[int, bytes]]:
-    """Renders a range of frames from a Blender file, returning (frame_number, png_bytes) pairs."""
-    import bpy
+) -> list[tuple[int, str, bytes]]:
+    """Renders a range of frames, returning (frame_number, file_extension, image_bytes) triples."""
+    import bpy  # ty: ignore[unresolved-import]
 
     print(f"[render] Starting: frames {frame_start}-{frame_end} step {frame_step}")
     print(
-        f"[render] Overrides: resolution={resolution_x}x{resolution_y} pct={resolution_percentage} samples={samples} engine={engine}"
+        f"[render] Overrides: resolution={resolution_x}x{resolution_y} pct={resolution_percentage} "
+        f"samples={samples} engine={engine}"
     )
 
-    blend_path = f"{VOLUME_MOUNT}/{job_id}/input.blend"
+    job_dir = _job_dir(job_id)
+    blend_path = str(job_dir / "input.blend")
     vol.reload()
     print(f"[render] Reading blend file from {blend_path}")
     bpy.ops.wm.open_mainfile(filepath=blend_path)
-    print(f"[render] Opened blend file")
+    print("[render] Opened blend file")
 
     configure_rendering(
         bpy.context,
@@ -84,24 +98,18 @@ def render(
         samples=samples,
         engine=engine,
     )
+    scene = bpy.context.scene
     print(
-        f"[render] Rendering configured: engine={bpy.context.scene.render.engine} res={bpy.context.scene.render.resolution_x}x{bpy.context.scene.render.resolution_y} samples={bpy.context.scene.cycles.samples}"
+        f"[render] Rendering configured: engine={scene.render.engine} "
+        f"res={scene.render.resolution_x}x{scene.render.resolution_y} samples={scene.cycles.samples}"
     )
 
-    # Map Blender file format to file extension
-    format_to_ext = {
-        "PNG": ".png",
-        "JPEG": ".jpg",
-        "OPEN_EXR": ".exr",
-        "OPEN_EXR_MULTILAYER": ".exr",
-        "TIFF": ".tiff",
-        "BMP": ".bmp",
-        "HDR": ".hdr",
-        "TARGA": ".tga",
-        "TARGA_RAW": ".tga",
-    }
-    file_format = bpy.context.scene.render.image_settings.file_format
-    ext = format_to_ext.get(file_format, ".png")
+    # Frames are single images. A movie output format (FFMPEG) cannot write stills, so fall back to PNG.
+    render_settings = bpy.context.scene.render
+    if render_settings.is_movie_format:
+        render_settings.image_settings.file_format = "PNG"
+    file_format = render_settings.image_settings.file_format
+    ext = render_settings.file_extension
     print(f"[render] Output format: {file_format} ({ext})")
 
     results = []
@@ -115,18 +123,23 @@ def render(
         frame_bytes = Path(output_path).read_bytes()
         print(f"[render] Frame {frame} done, {len(frame_bytes)} bytes")
         # Also save to volume for server-side video combine
-        vol_frame_path = f"{VOLUME_MOUNT}/{job_id}/frame_{frame:05d}{ext}"
-        Path(vol_frame_path).parent.mkdir(parents=True, exist_ok=True)
-        Path(vol_frame_path).write_bytes(frame_bytes)
+        vol_frame_path = job_dir / f"frame_{frame:05d}{ext}"
+        vol_frame_path.parent.mkdir(parents=True, exist_ok=True)
+        vol_frame_path.write_bytes(frame_bytes)
 
-        results.append((frame, frame_bytes))
+        results.append((frame, ext, frame_bytes))
 
     vol.commit()
     print(f"[render] Complete: {len(results)} frames rendered")
     return results
 
 
-combination_image = modal.Image.debian_slim(python_version="3.13").apt_install("ffmpeg")
+combination_image = (
+    modal.Image.debian_slim(python_version="3.13")
+    .apt_install("ffmpeg")
+    .env(container_env)
+    .add_local_python_source("farmhand")
+)
 
 
 @app.function(
@@ -141,53 +154,11 @@ def combine(
     crf: int = 20,
 ) -> bytes:
     """Combines rendered frames from the volume into a video."""
-    import subprocess
+    from farmhand.video import combine_frames
 
     vol.reload()
-
-    job_dir = Path(f"{VOLUME_MOUNT}/{job_id}")
-    frame_dir = job_dir / "frames"
-    frame_dir.mkdir(parents=True, exist_ok=True)
-
-    # Find frames with any image extension
-    extensions = ("*.png", "*.jpg", "*.jpeg", "*.exr", "*.tiff", "*.tif", "*.bmp")
-    frame_files = []
-    for ext in extensions:
-        frame_files.extend(job_dir.glob(f"frame_{ext}"))
-    frame_files = sorted(frame_files)
-
-    if not frame_files:
-        raise FileNotFoundError(f"No frame files found in {job_dir}")
-
-    img_ext = frame_files[0].suffix
-    print(f"[combine] Found {len(frame_files)} frames ({img_ext})")
-
-    # Symlink into sequential naming for ffmpeg
-    for i, src in enumerate(frame_files):
-        dst = frame_dir / f"frame_{i:05d}{img_ext}"
-        if not dst.exists():
-            dst.symlink_to(src)
-
-    out_path = "/tmp/output.mp4"
-    cmd = [
-        "ffmpeg",
-        "-y",
-        "-framerate",
-        str(fps),
-        "-i",
-        f"{frame_dir}/frame_%05d{img_ext}",
-        "-vcodec",
-        codec,
-        "-crf",
-        str(crf),
-        "-pix_fmt",
-        "yuv420p",
-        out_path,
-    ]
-    print(f"[combine] Running: {' '.join(cmd)}")
-    subprocess.run(cmd, check=True)
-
-    video_bytes = Path(out_path).read_bytes()
+    out_path = combine_frames(_job_dir(job_id), "/tmp/output.mp4", fps=fps, codec=codec, crf=crf)
+    video_bytes = out_path.read_bytes()
     print(f"[combine] Video complete: {len(video_bytes)} bytes")
     return video_bytes
 
@@ -198,8 +169,6 @@ def combine(
 )
 def list_jobs() -> list[dict]:
     """List all jobs stored on the volume."""
-    import os
-
     vol.reload()
     data_dir = Path(VOLUME_MOUNT)
     jobs = []
@@ -218,9 +187,7 @@ def list_jobs() -> list[dict]:
                 "frame_count": len(frames),
                 "has_blend": has_blend,
                 "blend_size": blend_size,
-                "total_size": sum(
-                    f.stat().st_size for f in entry.rglob("*") if f.is_file()
-                ),
+                "total_size": sum(f.stat().st_size for f in entry.rglob("*") if f.is_file()),
             }
         )
     return jobs
@@ -233,7 +200,7 @@ def list_jobs() -> list[dict]:
 def download_job_frames(job_id: str) -> list[tuple[str, bytes]]:
     """Download all frames for a job from the volume."""
     vol.reload()
-    job_dir = Path(f"{VOLUME_MOUNT}/{job_id}")
+    job_dir = _job_dir(job_id)
     if not job_dir.exists():
         raise FileNotFoundError(f"Job {job_id} not found on volume")
 
@@ -253,7 +220,7 @@ def delete_job(job_id: str) -> int:
     import shutil
 
     vol.reload()
-    job_dir = Path(f"{VOLUME_MOUNT}/{job_id}")
+    job_dir = _job_dir(job_id)
     if not job_dir.exists():
         raise FileNotFoundError(f"Job {job_id} not found on volume")
 
@@ -265,7 +232,7 @@ def delete_job(job_id: str) -> int:
 
 
 def enable_gpus(device_type, use_cpus=False):
-    import bpy
+    import bpy  # ty: ignore[unresolved-import]
 
     preferences = bpy.context.preferences
     cycles_preferences = preferences.addons["cycles"].preferences
@@ -322,4 +289,5 @@ def configure_rendering(
     if samples is not None:
         ctx.scene.cycles.samples = samples
 
-    enable_optimal_gpu()
+    if ctx.scene.render.engine == "CYCLES":
+        enable_optimal_gpu()

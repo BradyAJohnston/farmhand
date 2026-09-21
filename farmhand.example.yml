@@ -1,13 +1,16 @@
-# farmhand config. Place as farmhand.yml in your project (or any parent directory).
-# CLI flags override this file; this file overrides [tool.farmhand] in pyproject.toml.
-environment: my-modal-env   # omit to use your Modal profile's default environment
+# farmhand config. Save as farmhand.yml in the project you render from (or any parent directory).
+# The same keys can go under [tool.farmhand] in pyproject.toml. Command-line flags override the file.
+# Every key is optional; the values shown are the built-in defaults unless commented otherwise.
+
+# profile: my-workspace        # Modal profile in ~/.modal.toml; omit to use the active one
+# environment: render          # Modal environment; `farmhand setup` creates it if missing; omit for the default
 app_name: farmhand
-volume: farmhand-data
-gpu: L40S
+# volume: farmhand-data        # defaults to <app_name>-data
+gpu: L40S                      # or a fallback list, e.g. [RTX-PRO-6000, L40S]; see docs/gpus.md
 max_containers: 50
-timeout: 7200
-bpy_version: 5.1.0
-output_dir: render
+timeout: 7200                  # seconds per container
+bpy_version: 5.1.0             # must match the Blender version that saved your .blend files
+output_dir: render             # frames go to <output_dir>/<job_id>/
 frames_per_container: 1
 fps: 30
 codec: libx265
